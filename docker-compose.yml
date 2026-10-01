@@ -1,0 +1,36 @@
+services:
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: techcircle-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+    container_name: techcircle-backend
+    env_file:
+      - ./backend/.env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:15
+    container_name: techcircle-postgres
+    environment:
+      POSTGRES_DB: techcircle
+      POSTGRES_USER: techcircle_user
+      POSTGRES_PASSWORD: tech123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres_data:

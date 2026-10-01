@@ -2,8 +2,8 @@ import { useEffect, useState } from "react";
 import "./App.css";
 
 import AIPage from "./pages/AI";
-import ProductsPage from "./pages/Products";
-import EntertainmentPage from "./pages/Entertainment";
+import ProductsPage, { products } from "./pages/Products";
+import EntertainmentPage, { movies } from "./pages/Entertainment";
 import LibraryPage from "./pages/Library";
 
 const categories = [
@@ -21,24 +21,99 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [checkingSession, setCheckingSession] = useState(true);
-  const [savedItems, setSavedItems] = useState(() => {
-    try {
-      return JSON.parse(window.localStorage.getItem("techcircle-library") || "[]");
-    } catch {
-      return [];
+  const [savedItems, setSavedItems] = useState([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+
+  async function loadLibrary() {
+    if (!currentUser) {
+      setSavedItems([]);
+      return;
     }
-  });
+
+    setLibraryLoading(true);
+
+    try {
+      const response = await fetch("/api/library", {
+        credentials: "same-origin",
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          setCurrentUser(null);
+          setSavedItems([]);
+        }
+        return;
+      }
+
+      const result = await response.json();
+
+      setSavedItems(
+        result.items
+          .map((saved) => {
+            const catalog =
+              saved.item_type === "product" ? products : movies;
+
+            return catalog.find((item) => item.id === saved.item_id);
+          })
+          .filter(Boolean)
+      );
+    } catch {
+      setSavedItems([]);
+    } finally {
+      setLibraryLoading(false);
+    }
+  }
 
   useEffect(() => {
-    window.localStorage.setItem("techcircle-library", JSON.stringify(savedItems));
-  }, [savedItems]);
+    loadLibrary();
+  }, [currentUser]);
 
-  function toggleSavedItem(item) {
-    setSavedItems((items) =>
-      items.some((saved) => saved.id === item.id)
-        ? items.filter((saved) => saved.id !== item.id)
-        : [...items, item]
+  async function toggleSavedItem(item) {
+    const itemType = item.type;
+
+    const alreadySaved = savedItems.some(
+      (saved) => saved.id === item.id
     );
+
+    try {
+      if (alreadySaved) {
+        const response = await fetch(
+          `/api/library/${encodeURIComponent(itemType)}/${encodeURIComponent(item.id)}`,
+          {
+            method: "DELETE",
+            credentials: "same-origin",
+          }
+        );
+
+        if (!response.ok) {
+          return;
+        }
+
+        setSavedItems((items) =>
+          items.filter((saved) => saved.id !== item.id)
+        );
+      } else {
+        const response = await fetch("/api/library", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            item_id: item.id,
+            item_type: itemType,
+          }),
+        });
+
+        if (!response.ok) {
+          return;
+        }
+
+        setSavedItems((items) => [...items, item]);
+      }
+    } catch {
+      // Keep the current UI state if the request fails.
+    }
   }
 
   const [fullName, setFullName] = useState("");
@@ -708,3 +783,4 @@ function App() {
 }
 
 export default App;
+

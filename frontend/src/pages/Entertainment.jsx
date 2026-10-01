@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import "./Catalog.css";
 
-const movies = [
+export const movies = [
   { id:"movie-hollywood-1", type:"movie", industry:"Hollywood", name:"Interstellar", year:"2014", director:"Christopher Nolan", cast:"Matthew McConaughey, Anne Hathaway, Jessica Chastain", language:"English", genre:"Science fiction / Drama", runtime:"169 minutes", image:"https://images.unsplash.com/photo-1446776811953-b23d57bd21aa?w=900", synopsis:"A team travels beyond Earth in search of a future for humanity. This is a sample movie entry." },
   { id:"movie-tollywood-1", type:"movie", industry:"Tollywood", name:"Baahubali: The Beginning", year:"2015", director:"S. S. Rajamouli", cast:"Prabhas, Rana Daggubati, Anushka Shetty, Tamannaah", language:"Telugu", genre:"Epic action / Fantasy", runtime:"Approx. 159 minutes", image:"https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?w=900", synopsis:"An epic fantasy story introducing a kingdom, its rivalries and a mysterious royal legacy." },
   { id:"movie-bollywood-1", type:"movie", industry:"Bollywood", name:"Dangal", year:"2016", director:"Nitesh Tiwari", cast:"Aamir Khan, Fatima Sana Shaikh, Sanya Malhotra", language:"Hindi", genre:"Sports / Drama", runtime:"Approx. 161 minutes", image:"https://images.unsplash.com/photo-1517649763962-0c623066013b?w=900", synopsis:"A sports drama inspired by the journey of a wrestling coach and his daughters." },

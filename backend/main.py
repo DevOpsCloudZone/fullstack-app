@@ -296,7 +296,122 @@ def login_user(payload: LoginRequest, response: Response):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Login is temporarily unavailable. Please try again.",
         ) from None
+@app.get("/library")
+def get_library(request: Request):
+    user = get_authenticated_user(request)
 
+    try:
+        with closing(get_database_connection()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, item_id, item_type, saved_at
+                    FROM user_library
+                    WHERE user_id = %s
+                    ORDER BY saved_at DESC
+                    """,
+                    (user["id"],),
+                )
+                items = cursor.fetchall()
+
+        return {
+            "items": [
+                {
+                    "id": row[0],
+                    "item_id": row[1],
+                    "item_type": row[2],
+                    "saved_at": row[3],
+                }
+                for row in items
+            ]
+        }
+
+    except psycopg.Error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not load your library right now.",
+        ) from None
+
+
+@app.post("/library")
+def save_to_library(request: Request, payload: dict):
+    user = get_authenticated_user(request)
+
+    item_id = str(payload.get("item_id", "")).strip()
+    item_type = str(payload.get("item_type", "")).strip()
+
+    if not item_id or not item_type:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="item_id and item_type are required.",
+        )
+
+    try:
+        with closing(get_database_connection()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO user_library (user_id, item_id, item_type)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (user_id, item_id, item_type) DO NOTHING
+                    RETURNING id, item_id, item_type, saved_at
+                    """,
+                    (user["id"], item_id, item_type),
+                )
+                saved_item = cursor.fetchone()
+
+            connection.commit()
+
+        if saved_item is None:
+            return {"message": "Item is already in your library."}
+
+        return {
+            "message": "Item saved to your library.",
+            "item": {
+                "id": saved_item[0],
+                "item_id": saved_item[1],
+                "item_type": saved_item[2],
+                "saved_at": saved_item[3],
+            },
+        }
+
+    except psycopg.Error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not save this item right now.",
+        ) from None
+
+
+@app.delete("/library/{item_type}/{item_id}")
+def remove_from_library(
+    item_type: str,
+    item_id: str,
+    request: Request,
+):
+    user = get_authenticated_user(request)
+
+    try:
+        with closing(get_database_connection()) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    DELETE FROM user_library
+                    WHERE user_id = %s
+                      AND item_id = %s
+                      AND item_type = %s
+                    """,
+                    (user["id"], item_id, item_type),
+                )
+
+            connection.commit()
+
+        return {"message": "Item removed from your library."}
+
+    except psycopg.Error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not remove this item right now.",
+        ) from None
 
 @app.get("/auth/me")
 def get_current_user(request: Request):
