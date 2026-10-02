@@ -18,9 +18,17 @@ The application is designed so that each developer can clone the repository and 
 ## Required Software
 
 ### - Git
+```bash
+sudo yum install git -y
+```
 ### - Docker
+```bash
+sudo yum install docker -y
+sudo syatemctl start docker
+sudo systemctl enable docker
+sudo systemctl status docker 
+```
 ### - Docker Compose
-
 
 ```bash
 sudo mkdir -p /usr/libexec/docker/cli-plugins
@@ -231,7 +239,10 @@ docker-compose exec postgres psql -U techcircle_user -d techcircle -c "\dt"
 Open the application in a browser:
 http://localhost
 
+
 If running on an AWS EC2 server, use the server's public IP:
+```bash
 http://<EC2-PUBLIC-IP>:80
+```
 
 
