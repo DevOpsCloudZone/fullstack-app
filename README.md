@@ -83,6 +83,7 @@ The repository already contains .env.example as a safe template.
 ### 1. Root .env
 The root .env is used by Docker Compose.
 Create it from the project root:
+
 ---> cp .env.example .env
 
 ---> vim .env
