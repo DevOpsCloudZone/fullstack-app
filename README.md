@@ -5,6 +5,16 @@ TechCircle is a full-stack web application built with React, FastAPI, PostgreSQL
 The application is designed so that each developer can clone the repository and run an independent local environment with their own PostgreSQL database and Docker volume.
 
 ---
+
+1. Install prerequisites
+2. Clone repository
+3. Create `.env`
+4. Create `backend/.env`
+5. Choose your local PostgreSQL password
+6. Run `docker-compose up -d --build`
+7. Open the application
+
+   
 ## Required Software
 
 ### - Git
