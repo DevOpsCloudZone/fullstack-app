@@ -159,18 +159,30 @@ DB_PASSWORD=MyLocalPassword123
 for PostgreSQL:
 POSTGRES_PASSWORD: ${DB_PASSWORD}
 
-#### Backend .env
-FastAPI reads:
-backend/.env
+#### Backend `.env`
 
-uses these values :
+FastAPI reads `backend/.env`.
+
+Create:
+
+```bash
+vim backend/.env
+```
+
+Add:
+
+```env
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=techcircle
 DB_USER=techcircle_user
-DB_PASSWORD=MyLocalPassword123
+DB_PASSWORD=your_own_password
+COOKIE_SECURE=false
+```
 
-to connect to PostgreSQL.
+Use the same password that you configured in the root `.env`.
+
+FastAPI uses these values to connect to PostgreSQL.
 
 ---------------------------------------
 ---------------------------------------
