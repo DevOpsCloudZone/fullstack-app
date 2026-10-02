@@ -1,4 +1,3 @@
-
 import os
 import secrets
 import hashlib
@@ -82,10 +81,36 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
-def initialize_session_table():
-    """Create the session table and its expiry index."""
+def initialize_database():
+    """Create all required database tables in dependency order."""
     with closing(get_database_connection()) as connection:
         with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    full_name VARCHAR(255) NOT NULL,
+                    email VARCHAR(255) UNIQUE NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+
+            cursor.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_library (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL
+                        REFERENCES users(id) ON DELETE CASCADE,
+                    item_id VARCHAR(255) NOT NULL,
+                    item_type VARCHAR(50) NOT NULL,
+                    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE (user_id, item_id, item_type)
+                )
+                """
+            )
+
             cursor.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_sessions (
@@ -112,7 +137,7 @@ def initialize_session_table():
 
 @app.on_event("startup")
 def startup():
-    initialize_session_table()
+    initialize_database()
 
 
 def create_session(user_id: int) -> str:
@@ -130,6 +155,7 @@ def create_session(user_id: int) -> str:
                 """,
                 (user_id, token_hash, expires_at),
             )
+
         connection.commit()
 
     return token
@@ -296,6 +322,8 @@ def login_user(payload: LoginRequest, response: Response):
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Login is temporarily unavailable. Please try again.",
         ) from None
+
+
 @app.get("/library")
 def get_library(request: Request):
     user = get_authenticated_user(request)
@@ -413,6 +441,7 @@ def remove_from_library(
             detail="Could not remove this item right now.",
         ) from None
 
+
 @app.get("/auth/me")
 def get_current_user(request: Request):
     return {"user": get_authenticated_user(request)}
@@ -435,6 +464,7 @@ def logout_user(request: Request, response: Response):
                         """,
                         (token_hash,),
                     )
+
                 connection.commit()
 
         except psycopg.Error:
@@ -452,4 +482,3 @@ def logout_user(request: Request, response: Response):
     )
 
     return {"message": "Logout successful."}
-
