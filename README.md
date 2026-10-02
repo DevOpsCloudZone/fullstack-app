@@ -85,7 +85,8 @@ The root .env is used by Docker Compose.
 Create it from the project root:
 ---> cp .env.example .env
 
---->vim .env
+---> vim .env
+
 Set your own local PostgreSQL password:
 DB_PASSWORD=your_own_password
 
