@@ -85,11 +85,10 @@ The root .env is used by Docker Compose.
 Create it from the project root:
 ---> cp .env.example .env
 
-vim .env
-------------------------------------
+--->vim .env
 Set your own local PostgreSQL password:
 DB_PASSWORD=your_own_password
-------------------------------------
+
 Example:
 DB_PASSWORD=MyLocalPassword123
 
@@ -99,9 +98,10 @@ You do NOT need to use another developer's password.
 ### 2. Backend .env
 
 The backend also requires its own .env.
+
 Create:
-vim backend/.env
------------------------------------
+---> vim backend/.env
+
 Add:
 DB_HOST=postgres
 DB_PORT=5432
@@ -111,8 +111,9 @@ DB_PASSWORD=MyLocalPassword123
 COOKIE_SECURE=false
 
 The DB_PASSWORD must be the same password used in the root .env.
-----------------------------------------------------
+
 For example:
+-------------
 ```text
 Root .env
     ↓
@@ -142,7 +143,7 @@ POSTGRES_PASSWORD: ${DB_PASSWORD}
 FastAPI reads:
 backend/.env
 
-and uses:
+uses these values :
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=techcircle
