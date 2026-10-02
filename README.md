@@ -117,10 +117,10 @@ Create it from the project root:
 ```
 
 Set your own local PostgreSQL password:
-DB_PASSWORD=your_own_password
+DB_PASSWORD = your_own_password
 
 Example:
-DB_PASSWORD=MyLocalPassword123
+DB_PASSWORD = MyLocalPassword123
 
 You can choose your own password.
 You do NOT need to use another developer's password.
@@ -133,6 +133,8 @@ Create:
 ```bash
 vim backend/.env
 ```
+Add:
+
 ```env
 DB_HOST=postgres
 DB_PORT=5432
@@ -156,48 +158,23 @@ Backend .env
 DB_PASSWORD=MyLocalPassword123
 ```
 
----------------------------------------------------
 --------------------------------------------------
 
-### Why Are There Two .env Files?
-They are used by different parts of the application.
-#### Root `.env`
-Docker Compose reads:
-`.env`
-
-and uses:
-DB_PASSWORD=MyLocalPassword123
-
-for PostgreSQL:
-POSTGRES_PASSWORD: ${DB_PASSWORD}
-
-#### Backend `.env`
-
-FastAPI reads `backend/.env`.
-
-Create:
-
-```bash
-vim backend/.env
-```
-
-Add:
-
-```env
-DB_HOST=postgres
-DB_PORT=5432
-DB_NAME=techcircle
-DB_USER=techcircle_user
-DB_PASSWORD=your_own_password
-COOKIE_SECURE=false
-```
+Why Are There Two .env Files?
+The project uses two .env files for different purposes.  
+- Root .env — Docker Compose reads this file for PostgreSQL configuration.
+- It provides DB_PASSWORD, which is passed to PostgreSQL as POSTGRES_PASSWORD.
+- Backend .env — FastAPI reads this file for its database connection settings.
+- It contains DB_HOST, DB_PORT, DB_NAME, DB_USER, and DB_PASSWORD.
+- The DB_PASSWORD must be the same in both files so the backend can connect to PostgreSQL.
+- Both .env files are ignored by Git because they contain environment-specific configuration and secrets.
 
 Use the same password that you configured in the root `.env`.
 
 FastAPI uses these values to connect to PostgreSQL.
 
----------------------------------------
----------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------------------------------------------------------------------
 ## Architecture:
 ```text
                     Browser
@@ -227,13 +204,6 @@ frontend
 backend
 postgres
 
-## Verify Database Initialization
-
-Run:
-
-```bash
-docker-compose exec postgres psql -U techcircle_user -d techcircle -c "\dt"
-```
 
 ## Application Access
 Open the application in a browser:
@@ -244,5 +214,79 @@ If running on an AWS EC2 server, use the server's public IP:
 ```bash
 http://<EC2-PUBLIC-IP>:80
 ```
+
+## Verify Database Initialization
+
+Run:
+
+```bash
+docker-compose exec postgres psql -U techcircle_user -d techcircle -c "\dt"
+```
+
+## Verify Database library details
+```bash
+SELECT * FROM users;
+```
+```bash
+SELECT * FROM user_library;
+```
+For a more detailed view showing the user's name and email along with saved library items, create a database view:
+```sql
+CREATE OR REPLACE VIEW library AS
+SELECT
+    ul.id,
+    ul.user_id,
+    u.full_name,
+    u.email,
+    ul.item_id,
+    ul.item_type,
+    ul.saved_at
+FROM user_library ul
+JOIN users u ON ul.user_id = u.id;
+```
+
+After creating the view, you can retrieve the combined data using:
+
+```sql
+SELECT * FROM library;
+```
+
+
+### Sign Out & Session Verification
+
+When a user clicks **Sign Out**, the current login session is removed.  
+The user account and saved library items are **not deleted** from the database.
+
+```sql
+SELECT * FROM user_sessions;
+```
+
+The user account and library data remain in the database; only the active session is removed.
+
+
+## Project Status
+
+TechCircle is a full-stack application built with:
+
+- React + Vite
+- FastAPI
+- PostgreSQL
+- Docker & Docker Compose
+- Nginx
+
+The application supports user authentication, protected content, and database-backed My Library functionality.
+
+The project is currently being developed and will continue to evolve with additional DevOps practices such as CI/CD, container image management, security improvements, Terraform and Kubernetes deployment.
+
+---
+
+## Author
+
+**Umesh Aveti**  
+DevOps & Cloud Engineer
+
+GitHub: `https://github.com/DevOpsCloudZone`
+
+
 
 
