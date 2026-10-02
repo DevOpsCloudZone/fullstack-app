@@ -8,7 +8,7 @@ The application is designed so that each developer can clone the repository and 
 ## Required Software
 
 ### - Git
-###- Docker
+### - Docker
 ### - Docker Compose
 
 sudo mkdir -p /usr/libexec/docker/cli-plugins
@@ -49,7 +49,7 @@ chmod +x ~/.docker/cli-plugins/docker-buildx
 ---
 
 # Project Structure
-
+```
 techcircle-fullstack/
 │
 ├── frontend/
@@ -69,6 +69,8 @@ techcircle-fullstack/
 │
 ├── docker-compose.yml
 ├── .env
+```
+
 
 ## Environment Files
  The project requires two .env files.
@@ -78,12 +80,11 @@ techcircle-fullstack/
 
 Both files contain local configuration and secrets and must NOT be committed to Git.
 The repository already contains .env.example as a safe template.
-## 1. Root .env
+### 1. Root .env
 The root .env is used by Docker Compose.
 Create it from the project root:
 ---> cp .env.example .env
 
-Open it:
 vim .env
 ------------------------------------
 Set your own local PostgreSQL password:
@@ -95,7 +96,8 @@ DB_PASSWORD=MyLocalPassword123
 You can choose your own password.
 You do NOT need to use another developer's password.
 
-## 2. Backend .env
+### 2. Backend .env
+
 The backend also requires its own .env.
 Create:
 vim backend/.env
@@ -111,6 +113,7 @@ COOKIE_SECURE=false
 The DB_PASSWORD must be the same password used in the root .env.
 ----------------------------------------------------
 For example:
+```text
 Root .env
     ↓
 DB_PASSWORD=MyLocalPassword123
@@ -118,9 +121,11 @@ DB_PASSWORD=MyLocalPassword123
 Backend .env
     ↓
 DB_PASSWORD=MyLocalPassword123
+```
 
 ---------------------------------------------------
----------------------------------------------------
+--------------------------------------------------
+
 ### Why Are There Two .env Files?
 They are used by different parts of the application.
 #### Root .env
@@ -149,6 +154,7 @@ to connect to PostgreSQL.
 ---------------------------------------
 ---------------------------------------
 ## Architecture:
+```text
                     Browser
                        │
                        ↓
@@ -161,6 +167,7 @@ to connect to PostgreSQL.
                        │
                        ↓
                 PostgreSQL
+```
 ## Start the application
 Run:
 #### docker-compose up -d --build
@@ -180,6 +187,4 @@ http://localhost
 If running on an AWS EC2 server, use the server's public IP:
 http://<EC2-PUBLIC-IP>
 
-├── .env.example
-├── .gitignore
-└── README.md
+
