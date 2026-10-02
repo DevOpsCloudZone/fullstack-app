@@ -104,13 +104,14 @@ The backend also requires its own .env.
 Create:
 ---> vim backend/.env
 
-Add:
+```env
 DB_HOST=postgres
 DB_PORT=5432
 DB_NAME=techcircle
 DB_USER=techcircle_user
-DB_PASSWORD=MyLocalPassword123
+DB_PASSWORD=your_own_password
 COOKIE_SECURE=false
+```
 
 The DB_PASSWORD must be the same password used in the root .env.
 
