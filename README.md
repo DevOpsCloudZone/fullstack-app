@@ -201,6 +201,14 @@ frontend
 backend
 postgres
 
+## Verify Database Initialization
+
+Run:
+
+```bash
+docker-compose exec postgres psql -U techcircle_user -d techcircle -c "\dt"
+```
+
 ## Application Access
 Open the application in a browser:
 http://localhost
