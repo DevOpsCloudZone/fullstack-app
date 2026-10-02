@@ -100,12 +100,12 @@ techcircle-fullstack/
 ## Environment Files
  The project requires two .env files.
  They have different purposes.
- .env
- backend/.env
+ `.env`
+ `backend/.env`
 
 Both files contain local configuration and secrets and must NOT be committed to Git.
 The repository already contains .env.example as a safe template.
-### 1. Root .env
+### 1. Root `.env`
 The root .env is used by Docker Compose.
 Create it from the project root:
 ```bash
@@ -161,9 +161,9 @@ DB_PASSWORD=MyLocalPassword123
 
 ### Why Are There Two .env Files?
 They are used by different parts of the application.
-#### Root .env
+#### Root `.env`
 Docker Compose reads:
-.env
+`.env`
 
 and uses:
 DB_PASSWORD=MyLocalPassword123
