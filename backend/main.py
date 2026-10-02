@@ -1,197 +1,133 @@
+import hashlib
 import os
 import secrets
-import hashlib
-from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
 import psycopg
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Response, status
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
-from psycopg.errors import UniqueViolation
+from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, EmailStr
 from pwdlib import PasswordHash
 
-load_dotenv()
 
-app = FastAPI(
-    title="TechCircle API",
-    description="Backend API for TechCircle",
-    version="1.1.0",
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-password_hasher = PasswordHash.recommended()
 
-SESSION_COOKIE_NAME = "techcircle_session"
-SESSION_DURATION = timedelta(days=7)
+# --------------------------------------------------
+# Configuration
+# --------------------------------------------------
 
-# Set COOKIE_SECURE=true after HTTPS is configured.
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "techcircle")
+DB_USER = os.getenv("DB_USER", "techcircle_user")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+
+COOKIE_NAME = "techcircle_session"
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").lower() == "true"
 
+SESSION_DAYS = 7
 
-def get_database_connection():
-    """Connect to PostgreSQL using backend/.env."""
-    required_variables = [
-        "DB_HOST",
-        "DB_PORT",
-        "DB_NAME",
-        "DB_USER",
-        "DB_PASSWORD",
-    ]
+password_hash = PasswordHash.recommended()
 
-    missing = [key for key in required_variables if not os.getenv(key)]
-    if missing:
-        raise RuntimeError(
-            "Missing database configuration: " + ", ".join(missing)
-        )
 
+# --------------------------------------------------
+# Database connection
+# --------------------------------------------------
+
+def get_db_connection():
     return psycopg.connect(
-        host=os.environ["DB_HOST"],
-        port=int(os.environ["DB_PORT"]),
-        dbname=os.environ["DB_NAME"],
-        user=os.environ["DB_USER"],
-        password=os.environ["DB_PASSWORD"],
-        connect_timeout=5,
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
     )
 
 
-def hash_session_token(token: str) -> str:
-    """Hash the session token before storing it in PostgreSQL."""
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
+# --------------------------------------------------
+# Request models
+# --------------------------------------------------
 
 class RegisterRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-
-    full_name: str = Field(min_length=2, max_length=100)
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-
-
-class RegisterResponse(BaseModel):
-    message: str
-    user_id: int
     full_name: str
     email: EmailStr
+    password: str
 
 
 class LoginRequest(BaseModel):
-    model_config = ConfigDict(str_strip_whitespace=True)
-
     email: EmailStr
-    password: str = Field(min_length=1, max_length=128)
+    password: str
 
 
-def initialize_database():
-    """Create all required database tables in dependency order."""
-    with closing(get_database_connection()) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    full_name VARCHAR(255) NOT NULL,
-                    email VARCHAR(255) UNIQUE NOT NULL,
-                    password_hash TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS user_library (
-                    id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL
-                        REFERENCES users(id) ON DELETE CASCADE,
-                    item_id VARCHAR(255) NOT NULL,
-                    item_type VARCHAR(50) NOT NULL,
-                    saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE (user_id, item_id, item_type)
-                )
-                """
-            )
-
-            cursor.execute(
-                """
-                CREATE TABLE IF NOT EXISTS user_sessions (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL
-                        REFERENCES users(id) ON DELETE CASCADE,
-                    token_hash VARCHAR(64) UNIQUE NOT NULL,
-                    expires_at TIMESTAMPTZ NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                )
-                """
-            )
-
-            cursor.execute(
-                """
-                CREATE INDEX IF NOT EXISTS
-                idx_user_sessions_expires_at
-                ON user_sessions (expires_at)
-                """
-            )
-
-        connection.commit()
+class LibraryRequest(BaseModel):
+    item_id: str
+    item_type: str
 
 
-@app.on_event("startup")
-def startup():
-    initialize_database()
-
+# --------------------------------------------------
+# Session helpers
+# --------------------------------------------------
 
 def create_session(user_id: int) -> str:
-    """Create a random session and store only its hash."""
-    token = secrets.token_urlsafe(32)
-    token_hash = hash_session_token(token)
-    expires_at = datetime.now(timezone.utc) + SESSION_DURATION
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
 
-    with closing(get_database_connection()) as connection:
-        with connection.cursor() as cursor:
+    expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_DAYS)
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
             cursor.execute(
                 """
-                INSERT INTO user_sessions (user_id, token_hash, expires_at)
-                VALUES (%s, %s, %s)
+                INSERT INTO user_sessions
+                    (user_id, token_hash, expires_at)
+                VALUES
+                    (%s, %s, %s)
                 """,
                 (user_id, token_hash, expires_at),
             )
+        conn.commit()
 
-        connection.commit()
-
-    return token
+    return raw_token
 
 
 def get_authenticated_user(request: Request):
-    """Validate the session cookie and retrieve its user."""
-    token = request.cookies.get(SESSION_COOKIE_NAME)
+    token = request.cookies.get(COOKIE_NAME)
 
     if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Please sign in to continue.",
-        )
+        return None
 
-    token_hash = hash_session_token(token)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
 
-    with closing(get_database_connection()) as connection:
-        with connection.cursor() as cursor:
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
             cursor.execute(
                 """
-                SELECT u.id, u.full_name, u.email
-                FROM user_sessions AS s
-                JOIN users AS u ON u.id = s.user_id
+                SELECT
+                    u.id,
+                    u.full_name,
+                    u.email
+                FROM user_sessions s
+                JOIN users u
+                    ON u.id = s.user_id
                 WHERE s.token_hash = %s
                   AND s.expires_at > NOW()
                 """,
                 (token_hash,),
             )
+
             user = cursor.fetchone()
 
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Your session has expired. Please sign in again.",
-        )
+    if not user:
+        return None
 
     return {
         "id": user[0],
@@ -200,214 +136,304 @@ def get_authenticated_user(request: Request):
     }
 
 
-@app.get("/")
-def root():
-    return {
-        "service": "TechCircle API",
-        "status": "running",
-    }
+def delete_session(request: Request):
+    token = request.cookies.get(COOKIE_NAME)
 
+    if not token:
+        return
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                DELETE FROM user_sessions
+                WHERE token_hash = %s
+                """,
+                (token_hash,),
+            )
+        conn.commit()
+
+
+# --------------------------------------------------
+# Health
+# --------------------------------------------------
 
 @app.get("/health")
 def health():
-    return {
-        "status": "healthy",
-        "service": "TechCircle Backend",
-    }
+    return {"status": "ok"}
 
 
-@app.post(
-    "/auth/register",
-    response_model=RegisterResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def register_user(payload: RegisterRequest):
-    full_name = payload.full_name.strip()
-    email = str(payload.email).strip().lower()
+# --------------------------------------------------
+# Authentication
+# --------------------------------------------------
 
-    if len(full_name) < 2:
+@app.post("/auth/register")
+def register(data: RegisterRequest, response: Response):
+
+    full_name = data.full_name.strip()
+    email = str(data.email).strip().lower()
+
+    if not full_name:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Please enter your full name.",
+            status_code=400,
+            detail="Full name is required",
         )
 
-    password_hash = password_hasher.hash(payload.password)
-
-    try:
-        with closing(get_database_connection()) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO users (full_name, email, password_hash)
-                    VALUES (%s, %s, %s)
-                    RETURNING id, full_name, email
-                    """,
-                    (full_name, email, password_hash),
-                )
-                user = cursor.fetchone()
-
-            connection.commit()
-
-        return RegisterResponse(
-            message="Registration successful.",
-            user_id=user[0],
-            full_name=user[1],
-            email=user[2],
+    if len(data.password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 6 characters",
         )
 
-    except UniqueViolation:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="An account with this email already exists.",
-        ) from None
-
-    except psycopg.Error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Registration is temporarily unavailable. Please try again.",
-        ) from None
-
-
-@app.post("/auth/login")
-def login_user(payload: LoginRequest, response: Response):
-    email = str(payload.email).strip().lower()
+    hashed_password = password_hash.hash(data.password)
 
     try:
-        with closing(get_database_connection()) as connection:
-            with connection.cursor() as cursor:
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+
                 cursor.execute(
                     """
-                    SELECT id, full_name, email, password_hash
+                    SELECT id
                     FROM users
                     WHERE email = %s
                     """,
                     (email,),
                 )
-                user = cursor.fetchone()
 
-        if user is None or not password_hasher.verify(
-            payload.password, user[3]
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password.",
-            )
+                existing_user = cursor.fetchone()
 
-        token = create_session(user[0])
+                if existing_user:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Email already registered",
+                    )
 
-        response.set_cookie(
-            key=SESSION_COOKIE_NAME,
-            value=token,
-            max_age=int(SESSION_DURATION.total_seconds()),
-            httponly=True,
-            secure=COOKIE_SECURE,
-            samesite="lax",
-            path="/",
-        )
+                cursor.execute(
+                    """
+                    INSERT INTO users
+                        (full_name, email, password_hash)
+                    VALUES
+                        (%s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        full_name,
+                        email,
+                        hashed_password,
+                    ),
+                )
 
-        return {
-            "message": "Login successful.",
-            "user": {
-                "id": user[0],
-                "full_name": user[1],
-                "email": user[2],
-            },
-        }
+                user_id = cursor.fetchone()[0]
+
+            conn.commit()
 
     except HTTPException:
         raise
 
-    except psycopg.Error:
+    except Exception:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Login is temporarily unavailable. Please try again.",
-        ) from None
+            status_code=500,
+            detail="Unable to create account",
+        )
 
+    return {
+        "message": "Account created",
+        "user": {
+            "id": user_id,
+            "full_name": full_name,
+            "email": email,
+        },
+    }
+
+
+@app.post("/auth/login")
+def login(data: LoginRequest, response: Response):
+
+    email = str(data.email).strip().lower()
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+
+            cursor.execute(
+                """
+                SELECT
+                    id,
+                    full_name,
+                    email,
+                    password_hash
+                FROM users
+                WHERE email = %s
+                """,
+                (email,),
+            )
+
+            user = cursor.fetchone()
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+        )
+
+    user_id = user[0]
+    full_name = user[1]
+    user_email = user[2]
+    stored_password_hash = user[3]
+
+    try:
+        valid_password = password_hash.verify(
+            data.password,
+            stored_password_hash,
+        )
+    except Exception:
+        valid_password = False
+
+    if not valid_password:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+        )
+
+    session_token = create_session(user_id)
+
+    response.set_cookie(
+        key=COOKIE_NAME,
+        value=session_token,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+        max_age=SESSION_DAYS * 24 * 60 * 60,
+    )
+
+    return {
+        "message": "Login successful",
+        "user": {
+            "id": user_id,
+            "full_name": full_name,
+            "email": user_email,
+        },
+    }
+
+
+@app.get("/auth/me")
+def me(request: Request):
+
+    user = get_authenticated_user(request)
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+        )
+
+    return {
+        "user": user
+    }
+
+
+@app.post("/auth/logout")
+def logout(request: Request, response: Response):
+
+    delete_session(request)
+
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="lax",
+    )
+
+    return {
+        "message": "Logged out successfully"
+    }
+
+
+# --------------------------------------------------
+# Library
+# --------------------------------------------------
 
 @app.get("/library")
 def get_library(request: Request):
+
     user = get_authenticated_user(request)
 
-    try:
-        with closing(get_database_connection()) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    SELECT id, item_id, item_type, saved_at
-                    FROM user_library
-                    WHERE user_id = %s
-                    ORDER BY saved_at DESC
-                    """,
-                    (user["id"],),
-                )
-                items = cursor.fetchall()
-
-        return {
-            "items": [
-                {
-                    "id": row[0],
-                    "item_id": row[1],
-                    "item_type": row[2],
-                    "saved_at": row[3],
-                }
-                for row in items
-            ]
-        }
-
-    except psycopg.Error:
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not load your library right now.",
-        ) from None
+            status_code=401,
+            detail="Not authenticated",
+        )
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+
+            cursor.execute(
+                """
+                SELECT
+                    item_id,
+                    item_type,
+                    saved_at
+                FROM user_library
+                WHERE user_id = %s
+                ORDER BY saved_at DESC
+                """,
+                (user["id"],),
+            )
+
+            rows = cursor.fetchall()
+
+    return {
+        "items": [
+            {
+                "item_id": row[0],
+                "item_type": row[1],
+                "saved_at": row[2],
+            }
+            for row in rows
+        ]
+    }
 
 
 @app.post("/library")
-def save_to_library(request: Request, payload: dict):
+def save_to_library(
+    data: LibraryRequest,
+    request: Request,
+):
+
     user = get_authenticated_user(request)
 
-    item_id = str(payload.get("item_id", "")).strip()
-    item_type = str(payload.get("item_type", "")).strip()
-
-    if not item_id or not item_type:
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="item_id and item_type are required.",
+            status_code=401,
+            detail="Not authenticated",
         )
 
-    try:
-        with closing(get_database_connection()) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO user_library (user_id, item_id, item_type)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (user_id, item_id, item_type) DO NOTHING
-                    RETURNING id, item_id, item_type, saved_at
-                    """,
-                    (user["id"], item_id, item_type),
-                )
-                saved_item = cursor.fetchone()
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
 
-            connection.commit()
+            cursor.execute(
+                """
+                INSERT INTO user_library
+                    (user_id, item_id, item_type)
+                VALUES
+                    (%s, %s, %s)
+                ON CONFLICT
+                    (user_id, item_id, item_type)
+                DO NOTHING
+                """,
+                (
+                    user["id"],
+                    data.item_id,
+                    data.item_type,
+                ),
+            )
 
-        if saved_item is None:
-            return {"message": "Item is already in your library."}
+        conn.commit()
 
-        return {
-            "message": "Item saved to your library.",
-            "item": {
-                "id": saved_item[0],
-                "item_id": saved_item[1],
-                "item_type": saved_item[2],
-                "saved_at": saved_item[3],
-            },
-        }
-
-    except psycopg.Error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not save this item right now.",
-        ) from None
+    return {
+        "message": "Item saved"
+    }
 
 
 @app.delete("/library/{item_type}/{item_id}")
@@ -416,69 +442,34 @@ def remove_from_library(
     item_id: str,
     request: Request,
 ):
+
     user = get_authenticated_user(request)
 
-    try:
-        with closing(get_database_connection()) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    DELETE FROM user_library
-                    WHERE user_id = %s
-                      AND item_id = %s
-                      AND item_type = %s
-                    """,
-                    (user["id"], item_id, item_type),
-                )
-
-            connection.commit()
-
-        return {"message": "Item removed from your library."}
-
-    except psycopg.Error:
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not remove this item right now.",
-        ) from None
+            status_code=401,
+            detail="Not authenticated",
+        )
 
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
 
-@app.get("/auth/me")
-def get_current_user(request: Request):
-    return {"user": get_authenticated_user(request)}
+            cursor.execute(
+                """
+                DELETE FROM user_library
+                WHERE user_id = %s
+                  AND item_id = %s
+                  AND item_type = %s
+                """,
+                (
+                    user["id"],
+                    item_id,
+                    item_type,
+                ),
+            )
 
+        conn.commit()
 
-@app.post("/auth/logout")
-def logout_user(request: Request, response: Response):
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-
-    if token:
-        token_hash = hash_session_token(token)
-
-        try:
-            with closing(get_database_connection()) as connection:
-                with connection.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        DELETE FROM user_sessions
-                        WHERE token_hash = %s
-                        """,
-                        (token_hash,),
-                    )
-
-                connection.commit()
-
-        except psycopg.Error:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Could not sign out right now. Please try again.",
-            ) from None
-
-    response.delete_cookie(
-        key=SESSION_COOKIE_NAME,
-        path="/",
-        secure=COOKIE_SECURE,
-        httponly=True,
-        samesite="lax",
-    )
-
-    return {"message": "Logout successful."}
+    return {
+        "message": "Item removed"
+    }
