@@ -279,6 +279,14 @@ The application supports user authentication, protected content, and database-ba
 The project is currently being developed and will continue to evolve with additional DevOps practices such as CI/CD, container image management, security improvements, Terraform and Kubernetes deployment.
 
 ---
+## Usage & Contributions
+
+This repository is provided for learning, development, and personal use.
+
+You are welcome to clone or fork this repository and modify it for your own use.
+
+Direct push access to the original repository is restricted. If you want to contribute changes to this project, please create a fork and submit a pull request.
+
 
 ## Author
 
