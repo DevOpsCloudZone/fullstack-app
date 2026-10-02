@@ -100,10 +100,13 @@ The repository already contains .env.example as a safe template.
 ### 1. Root .env
 The root .env is used by Docker Compose.
 Create it from the project root:
+```bash
+ cp .env.example .env
+```
 
----> cp .env.example .env
-
----> vim .env
+```bash
+ vim .env
+```
 
 Set your own local PostgreSQL password:
 DB_PASSWORD=your_own_password
@@ -119,8 +122,9 @@ You do NOT need to use another developer's password.
 The backend also requires its own .env.
 
 Create:
----> vim backend/.env
-
+```bash
+vim backend/.env
+```
 ```env
 DB_HOST=postgres
 DB_PORT=5432
@@ -203,11 +207,13 @@ FastAPI uses these values to connect to PostgreSQL.
 ```
 ## Start the application
 Run:
-#### docker-compose up -d --build
-
+```bash
+docker-compose up -d --build
+```
 Check the containers:
-#### docker-compose ps
-
+```bash
+docker-compose ps
+```
 The services should be running:
 frontend
 backend
@@ -226,6 +232,6 @@ Open the application in a browser:
 http://localhost
 
 If running on an AWS EC2 server, use the server's public IP:
-http://<EC2-PUBLIC-IP>
+http://<EC2-PUBLIC-IP>:80
 
 
